@@ -1,0 +1,543 @@
+package mainV1
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/tidwall/gjson"
+)
+
+type DictionaryElement struct {
+	name              string
+	path              string
+	description       string
+	dataType          string
+	propertyMap       map[string]json.RawMessage
+	propertyMapString map[string]string
+	jsonValue         string
+	jsonElement       JsonElement
+}
+
+//type JsonElement struct {
+// 	Description string            `json:"description"`
+// 	Datatype    string            `json:"type"`
+// 	Properties  map[string]string `json:"properties"`
+// }
+type JsonElement struct {
+	Description string            `json:"description"`
+	Datatype    string            `json:"datatype"`
+	Properties  map[string]string `json:"properties"`
+}
+
+func mainV1() {
+
+	var files = readFiles()
+
+	//	dict := make(map[string]DictionaryItem)
+	dict := make(map[string]string)
+
+	for _, file := range files {
+
+		jsonFile, err := ioutil.ReadFile(file)
+		// if we os.Open returns an error then handle it
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		//var jsonLevelZero map[string]json.RawMessage
+		//json.Unmarshal(jsonFile, &jsonLevelZero)
+
+		jsonStringFile := string(jsonFile)
+		//var jsonDefinitions map[string]json.RawMessage
+
+		//json.Unmarshal([]byte(jsonLevelZero["definitions"]), &jsonDefinitions)
+
+		//fmt.Println(string(jsonLevelZero["definitions"]))
+		replaceReferencesV2(jsonStringFile, dict)
+
+		//Makind allOf flat
+		var dictionary = make(map[string]DictionaryElement)
+
+		// for k := range dict {
+		// 	var propertyMap map[string]json.RawMessage
+		// 	var definitionMap map[string]json.RawMessage
+		// 	json.Unmarshal([]byte(dict[k]), &definitionMap)
+		// 	fmt.Println(k)
+		// 	if string(definitionMap["allOf"]) != "" {
+		// 		jsonTable := make([]json.RawMessage, 0)
+		// 		json.Unmarshal(definitionMap["allOf"], &jsonTable)
+
+		// 		for i := 0; i < len(jsonTable); i++ {
+		// 			var propertyTempMap map[string]json.RawMessage
+		// 			json.Unmarshal(jsonTable[i], &propertyTempMap)
+		// 			if string(propertyTempMap["properties"]) != "" {
+		// 				json.Unmarshal(propertyTempMap["properties"], &propertyMap)
+		// 			}
+		// 			fmt.Println(propertyMap)
+		// 		}
+
+		// 	}
+		// }
+		for k := range dict {
+			fmt.Println(k)
+			//var propertyMap map[string]json.RawMessage
+			var definitionMap map[string]json.RawMessage
+			json.Unmarshal([]byte(dict[k]), &definitionMap)
+			elem := DictionaryElement{}
+			makeDictItemFlat(k, definitionMap, &elem, 0)
+
+			elem.prepareStringProperties()
+			elem.convertToJsonElement()
+
+			dictionary[k] = elem
+			//fmt.Println("Final Element: " + k)
+			fmt.Println(elem.jsonValue)
+		}
+
+		//fmt.Println(jsonStringFile)
+		//mapKeyReader(dict)
+
+		for k := range dictionary {
+
+			//working version
+			//variableName := strings.ReplaceAll(k, "#/definitions/", "")
+			//referenceLine := "\"$ref\": \"" + k + "\""
+			//newLine := "\"" + variableName + "\": " + dict[k]
+			//jsonStringFile = strings.ReplaceAll(jsonStringFile, referenceLine, newLine)
+			//-----------------------------------------------------------------
+
+			variableName := strings.ReplaceAll(k, "#/definitions/", "")
+			referenceLine := "\"$ref\": \"" + k + "\""
+			newLine := "\"" + variableName + "\": \"" + k + "\""
+			jsonStringFile = strings.ReplaceAll(jsonStringFile, referenceLine, newLine)
+		}
+		//fmt.Println(jsonStringFile)
+		fmt.Println(dictionary["#/definitions/descriptorWithEnvironments"].jsonElement)
+		//Unpacked from references
+
+		//var jsonLevelZero map[string]json.RawMessage
+		//json.Unmarshal([]byte(jsonStringFile), &jsonLevelZero)
+		//-------------------------------------------------------------------------------------convertToMD([]byte(jsonStringFile), 0, "")
+		//fmt.Println(jsonLevelZero)
+
+		// for k := range jsonLevelZero {
+		// 	fmt.Println("Key:" + k)
+		// 	value := jsonLevelZero[k]
+		// 	if isSimpleValue(value) {
+		// 		fmt.Println(k)
+		// 		fmt.Println(string(value))
+		// 	} else {
+		// 		var secondLevel map[string]json.RawMessage
+		// 		json.Unmarshal(value, &secondLevel)
+		// 		//fmt.Println(nextLevel)
+		// 		for k2 := range secondLevel {
+		// 			fmt.Println("LVL2 Key:" + k2)
+		// 			value2 := secondLevel[k2]
+		// 			//fmt.Println("Val2: " + string(value2))
+		// 			if isSimpleValue(value2) {
+		// 				fmt.Println(k2)
+		// 				fmt.Println(string(value2))
+		// 			} else {
+		// 				var thirdLevel map[string]json.RawMessage
+		// 				json.Unmarshal(value, &thirdLevel)
+		// 				//fmt.Println(nextLevel)
+		// 				for k3 := range thirdLevel {
+		// 					fmt.Println("LVL3 Key:" + k3)
+		// 					value3 := thirdLevel[k3]
+		// 					if isSimpleValue(value3) {
+		// 						fmt.Println(k3)
+		// 						fmt.Println(string(value3))
+		// 					} else {
+		// 						var fourthLevel map[string]json.RawMessage
+		// 						json.Unmarshal(value, &fourthLevel)
+		// 						//fmt.Println(nextLevel)
+		// 						for k4 := range fourthLevel {
+		// 							fmt.Println("LVL4 Key:" + k4)
+		// 							value4 := fourthLevel[k4]
+		// 							if isSimpleValue(value4) {
+		// 								fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + k4)
+		// 								fmt.Println(string(value4))
+		// 							} else {
+		// 								var fifthLevel map[string]json.RawMessage
+		// 								json.Unmarshal(value, &fifthLevel)
+		// 								//fmt.Println(nextLevel)
+		// 								for k5 := range fifthLevel {
+		// 									fmt.Println("LVL5 Key:" + k5)
+		// 									value5 := fifthLevel[k5]
+		// 									if isSimpleValue(value5) {
+		// 										fmt.Println("xxxxxxxxxxxxxxxxxxxxxxxxx" + k5)
+		// 										fmt.Println(string(value5))
+		// 									} else {
+		// 										var sixthLevel map[string]json.RawMessage
+		// 										json.Unmarshal(value, &sixthLevel)
+		// 										//fmt.Println(nextLevel)
+		// 										for k6 := range sixthLevel {
+		// 											fmt.Println("LVL6 Key:" + k6)
+		// 											value6 := sixthLevel[k6]
+		// 											if isSimpleValue(value6) {
+		// 												fmt.Println("<><><><><><>" + k6)
+		// 												fmt.Println(string(value6))
+		// 											} else {
+		// 												fmt.Println("complicated")
+		// 												//						var nextLevel map[string]json.RawMessage
+		// 												//						json.Unmarshal(value, &nextLevel)
+		// 											}
+		// 										}
+		// 									}
+		// 								}
+		// 							}
+		// 						}
+		// 					}
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
+		//mapKeyReader(dict)
+		//fmt.Println(dict["#/definitions/volume"])
+		//mapKeyReader(jsonLevelZero["definitions"].(map[string]interface{}))
+		//fmt.Println(jsonLevelZero["definitions"].(map[string]interface{})["appConfig"])
+
+		//stringFile := string(jsonFile)
+		//- build reference dictionary
+		//replaceReferences(stringFile, dict)
+	}
+}
+
+func readFiles() []string {
+
+	var files []string
+
+	root := "in"
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return files
+}
+
+func replaceReferences(jsonString string, dict map[string]string) string {
+
+	//jsonString := string(jsonRaw)
+	//fmt.Printf("func arg %p", &jsonString)
+	definitionsMap := gjson.Get(jsonString, "definitions").Map()
+	//var jsonMap map[string]json.RawMessage
+
+	//json.Unmarshal(jsonRaw, &jsonMap)
+
+	//fmt.Println(jsonMap)
+
+	for k := range definitionsMap {
+		//fmt.Println(k)
+		nv := definitionsMap[k].String()
+		//fmt.Println(nv)
+		if !strings.Contains(nv, "$ref") {
+			if _, found := dict["#/definitions/"+k]; !found {
+				dict["#/definitions/"+k] = nv
+			}
+		}
+	}
+	for k := range dict {
+		variableName := strings.ReplaceAll(k, "#/definitions/", "")
+		referenceLine := "\"$ref\": \"" + k + "\""
+		newLine := "\"" + variableName + "\": " + dict[k]
+		jsonString = strings.ReplaceAll(jsonString, referenceLine, newLine)
+	}
+
+	if strings.Contains(jsonString, "$ref") {
+		replaceReferences(jsonString, dict)
+	} else {
+		for k := range definitionsMap {
+			//fmt.Println(k)
+			nv := definitionsMap[k].String()
+			fmt.Println(nv)
+			if !strings.Contains(nv, "$ref") {
+				if _, found := dict["#/definitions/"+k]; !found {
+					dict["#/definitions/"+k] = nv
+				}
+			}
+		}
+		return jsonString
+	}
+	return jsonString
+}
+
+func replaceReferencesV2(jsonString string, dict map[string]string) string {
+
+	//fmt.Printf("func arg %p", &jsonString)
+
+	definitionsMap := gjson.Get(jsonString, "definitions").Map()
+
+	for k := range definitionsMap {
+		nv := definitionsMap[k].String()
+
+		if !strings.Contains(nv, "$ref") {
+			if dict["#/definitions/"+k] == "" {
+				dict["#/definitions/"+k] = nv
+			}
+		}
+	}
+	for k := range dict {
+
+		variableName := strings.ReplaceAll(k, "#/definitions/", "")
+		referenceLine := "\"$ref\": \"" + k + "\""
+		newLine := "\"" + variableName + "\": " + dict[k]
+		jsonString = strings.ReplaceAll(jsonString, referenceLine, newLine)
+	}
+
+	if strings.Contains(jsonString, "$ref") {
+		replaceReferencesV2(jsonString, dict)
+	} else {
+		return "" + jsonString
+	}
+	return "" + jsonString
+}
+
+func convertToMD(jsonFile []byte, level int, parentKey string) {
+
+	// if isTable(jsonFile) {
+	// 	fmt.Println("This is table !")
+	// 	jTable := make([]json.RawMessage, 0)
+	// 	json.Unmarshal(jsonFile, &jTable)
+	// 	fmt.Println()
+	// }
+	//fmt.Println(level)
+	var jsonMap map[string]json.RawMessage
+	json.Unmarshal(jsonFile, &jsonMap)
+
+	//fmt.Println("LEN: " + strconv.Itoa(len(jsonMap)))
+	//fmt.Println(jsonLevelZero)
+	spaceLevel := ""
+	for i := 0; i < level; i++ {
+		spaceLevel += ""
+	}
+
+	if string(jsonMap["definitions"]) == "" {
+		delete(jsonMap, "definitions")
+	}
+	if string(jsonMap["description"]) != "" {
+		//line := spaceLevel + "\n Description: **" + quoteRemover(string(jsonMap["description"])) + "**\n"
+		line := spaceLevel + "\n  **" + quoteRemover(string(jsonMap["description"])) + "**\n"
+		fmt.Println(line)
+	}
+	if string(jsonMap["type"]) != "" {
+		line := spaceLevel + "\n Type: **" + quoteRemover(string(jsonMap["type"])) + "**\n"
+		fmt.Println(line)
+	}
+
+	for k := range jsonMap {
+		//fmt.Println("Key:" + k)
+		value := jsonMap[k]
+		if isSimpleValue(value) && k != "description" && k != "type" && k != "examples" {
+			line := spaceLevel + " " + k + ": " + string(value) + "\n"
+			fmt.Println(line)
+			//fmt.Println(k)
+			//fmt.Println(string(value))
+			// } else if k == "examples" {
+			// 	line := spaceLevel + " Examples:\n```yaml\n" + string(value) + "\n```"
+			// 	fmt.Println(line)
+		} else if k != "description" && k != "type" && k != "examples" {
+			level++
+
+			if isTable(value) {
+
+				jsonTable := make([]json.RawMessage, 0)
+				json.Unmarshal(value, &jsonTable)
+				// if k != "anyOf" && k != "allOf" {
+				// 	fmt.Println(spaceLevel + " <details>")
+				// 	fmt.Println(spaceLevel + " <summary>**" + strconv.Itoa(level) + " >> " + k + "**</summary>\n")
+				// 	fmt.Println(spaceLevel + "<p>")
+				// } else if k == "anyOf" {
+				// 	fmt.Println("\n**Any of values:**")
+				// } else if k == "allOf" {
+				// 	fmt.Println("\n**All values in the set:**")
+				// }
+
+				for i := 0; i < len(jsonTable); i++ {
+					// if k == "anyOf" {
+					//					fmt.Println("Table ind:" + strconv.Itoa(i))
+					// }
+					convertToMD(jsonTable[i], level, k)
+
+					// if k == "anyOf" {
+					//					fmt.Println("Table end: " + string(jsonTable[i]))
+					// }
+				}
+
+				// if k != "anyOf" && k != "allOf" {
+				// 	fmt.Println(spaceLevel + "</p>")
+				// 	fmt.Println(spaceLevel + " </details>\n")
+				// }
+				//}
+
+				// if tabElement {
+				// 	//fmt.Println(spaceLevel + " ## ** " + k + " **")
+				// 	convertToMD(value, level, false)
+				// 	level--
+				// 	//fmt.Println(spaceLevel + " </details>\n")
+			} else {
+				// if parentKey == "properties" {
+				// 	fmt.Println("**" + k + "!!!!!!! **")
+				// 	fmt.Println("<hr/>")
+				// } else if detailsOpened(k) && k != "properties" && k != "descriptorWithEnvironments" && parentKey != "properties" {
+				// 	fmt.Println(spaceLevel + " <details open>")
+				// } else if k == "properties" {
+				// 	fmt.Println("\n **Properties:** ")
+				// } else if k == "descriptor" {
+				// 	fmt.Println("\n**Descriptor:**")
+				// } else if k != "descriptorWithEnvironments" && parentKey != "properties" {
+				// 	fmt.Println(spaceLevel + " <details>")
+				// }
+				// if k != "descriptorWithEnvironments" && k != "properties" && k != "descriptor" && parentKey != "properties" {
+				// 	fmt.Println(spaceLevel + " <summary>**" + strconv.Itoa(level) + " >> " + k + "**</summary>\n")
+				// }
+				// && parentKey != "properties"
+				// else if k != "descriptorWithEnvironments" && k != "properties" && k != "descriptor" {
+				// 	fmt.Println(k)
+				// }
+				fmt.Println(spaceLevel + " <details>")
+				fmt.Println(spaceLevel + " <summary>**" + strconv.Itoa(level) + " >> " + k + "**</summary>\n")
+				fmt.Println(spaceLevel + " <p>")
+				convertToMD(value, level, k)
+				level--
+				fmt.Println(spaceLevel + " </p>")
+				fmt.Println(spaceLevel + " </details>\n")
+				// if k != "properties" && k != "descriptor" && k != "descriptorWithEnvironments" && parentKey != "properties" {
+				// 	fmt.Println(spaceLevel + " </details>\n")
+				// } else {
+				// 	fmt.Println("<hr/>")
+				// }
+
+			}
+
+		}
+	}
+
+	if string(jsonMap["examples"]) != "" {
+		line := spaceLevel + " Examples:\n\n ```yaml\n" + string(jsonMap["examples"]) + "\n ```"
+		fmt.Println(line)
+	}
+}
+
+func makeDictItemFlat(item string, definitionMap map[string]json.RawMessage, element *DictionaryElement, level int) {
+
+	//fmt.Println("Level - start: " + strconv.Itoa(level))
+	// if level == 0 {
+	// 	element = DictionaryElement{}
+	// }
+	//var propertyMap map[string]json.RawMessage
+	//var definitionMap map[string]json.RawMessage
+	//json.Unmarshal([]byte(dict[item]), &definitionMap)
+	//fmt.Println(k)
+	if string(definitionMap["allOf"]) != "" {
+		if level == 0 {
+			//fmt.Println("Description: " + string(definitionMap["description"]))
+			element.description = string(definitionMap["description"])
+			element.dataType = string(definitionMap["type"])
+			//fmt.Println("Type: " + string(definitionMap["type"])) - jest puste
+		}
+		//czy to jest obiekt z typem allOf
+		//fmt.Println("DefMap:")
+		//fmt.Println(definitionMap)
+		jsonTable := make([]json.RawMessage, 0)
+		json.Unmarshal(definitionMap["allOf"], &jsonTable)
+
+		for i := 0; i < len(jsonTable); i++ {
+			var propertyTempMap map[string]json.RawMessage
+			json.Unmarshal(jsonTable[i], &propertyTempMap)
+			if string(propertyTempMap["properties"]) != "" {
+				json.Unmarshal(propertyTempMap["properties"], &element.propertyMap)
+			} else {
+				//po odczytaniu będzie nazwa pola
+				var secondLevelMap map[string]json.RawMessage
+				json.Unmarshal(jsonTable[i], &secondLevelMap)
+				//na kolejnym poziomie powinny być properties
+				//fmt.Println(secondLevelMap)
+				for k := range secondLevelMap {
+					var thirdLevelMap map[string]json.RawMessage
+					json.Unmarshal(secondLevelMap[k], &thirdLevelMap)
+					//fmt.Println(k)
+					//fmt.Println(thirdLevelMap)
+					if string(thirdLevelMap["allOf"]) != "" {
+						level++
+						makeDictItemFlat(k, thirdLevelMap, element, level)
+					} else if string(thirdLevelMap["properties"]) != "" {
+						json.Unmarshal(thirdLevelMap["properties"], &element.propertyMap)
+					}
+				}
+			}
+			//fmt.Println(element.propertyMap)
+		}
+		res, _ := json.Marshal(definitionMap)
+		element.jsonValue = string(res)
+	} else {
+		if level == 0 {
+			element.description = string(definitionMap["description"])
+			element.description = string(definitionMap["type"])
+			json.Unmarshal(definitionMap["properties"], &element.propertyMap)
+			// for k := range definitionMap {
+			// 	fmt.Println(k)
+			// }
+		}
+
+		res, _ := json.Marshal(definitionMap)
+		element.jsonValue = string(res)
+	}
+
+}
+func (elem *DictionaryElement) prepareStringProperties() {
+
+	elem.propertyMapString = make(map[string]string)
+
+	for k := range elem.propertyMap {
+
+		//stringMessage := ""
+		//json.Unmarshal(elem.propertyMap[k], &stringMessage)
+		elem.propertyMapString[k] = string(elem.propertyMap[k])
+		//fmt.Println("key: " + k)
+		//fmt.Println(elem.propertyMapString[k])
+	}
+}
+func (elem *DictionaryElement) convertToJsonElement() {
+
+	elem.jsonElement = JsonElement{}
+	elem.jsonElement.Description = elem.description
+	elem.jsonElement.Datatype = elem.dataType
+	elem.jsonElement.Properties = elem.propertyMapString
+	jsonValue, err := json.Marshal(elem.jsonElement)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	jsonValueString := string(jsonValue)
+	jsonValueString = strings.ReplaceAll(jsonValueString, "\\n", "")
+	jsonValueString = strings.ReplaceAll(jsonValueString, ",", ",\n")
+	jsonValueString = strings.ReplaceAll(jsonValueString, "{", "{\n")
+	jsonValueString = strings.ReplaceAll(jsonValueString, "}", "\n}\n")
+
+	//\n
+	//jsonValueString = strings.ReplaceAll(jsonValueString, "\"", "")
+	// jsonValueString = strings.ReplaceAll(jsonValueString, "\"{", "{")
+	// jsonValueString = strings.ReplaceAll(jsonValueString, "}\"", "}")
+	// jsonValueString = strings.ReplaceAll(jsonValueString, "\\n", "")
+	// jsonValueString = strings.ReplaceAll(jsonValueString, "              ", "")
+
+	//jsonValueString = strings.ReplaceAll(jsonValueString, "\\\"", "")
+	//jsonValueString = strings.ReplaceAll(jsonValueString, "\"\"", "\"")
+	//jsonValueString = strings.ReplaceAll(jsonValueString, "\"", "")
+
+	//fmt.Println(jsonValueString)
+	elem.jsonValue = jsonValueString
+}
