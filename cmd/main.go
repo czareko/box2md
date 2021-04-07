@@ -11,5 +11,5 @@ func main() {
 
 	schema := box2md.Read(schemaJson)
 
-	fmt.Println(schema.ToMDString())
+	fmt.Println(schema.ToMDString(0))
 }
