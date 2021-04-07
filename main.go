@@ -46,7 +46,7 @@ type Item struct {
 	DataType string
 }
 
-func main() {
+func tmp_main() {
 
 	var files = readFiles()
 
