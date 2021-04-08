@@ -1,6 +1,7 @@
 package box2md
 
 import (
+	"log"
 	"strings"
 )
 
@@ -12,7 +13,6 @@ type TypeDefinition struct {
 	Description          *string                    `json:"description,omitempty"`
 	Properties           map[string]*TypeDefinition `json:"properties,omitempty"`
 	AllOf                []*TypeDefinition          `json:"allOf,omitempty"`
-	AnyOf                []*TypeDefinition          `json:"anyOf,omitempty"`
 	OneOf                []*TypeDefinition          `json:"oneOf,omitempty"`
 	Ref                  *string                    `json:"$ref,omitempty"`
 	Examples             []interface{}              `json:"examples,omitempty"`
@@ -41,9 +41,6 @@ func (t *TypeDefinition) propagateRefTypeDefinitions(definitions map[string]*Typ
 	for _, referencedTypeDefinition := range t.AllOf {
 		referencedTypeDefinition.propagateRefTypeDefinitions(definitions)
 	}
-	for _, referencedTypeDefinition := range t.AnyOf {
-		referencedTypeDefinition.propagateRefTypeDefinitions(definitions)
-	}
 	for _, referencedTypeDefinition := range t.OneOf {
 		referencedTypeDefinition.propagateRefTypeDefinitions(definitions)
 	}
@@ -61,7 +58,7 @@ func (t *TypeDefinition) GetSchema() *string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetSchema()
+			return t.getTypeDefinition(refKey).GetSchema()
 		} else {
 			return nil
 		}
@@ -74,7 +71,7 @@ func (t *TypeDefinition) GetId() *string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetId()
+			return t.getTypeDefinition(refKey).GetId()
 		} else {
 			return nil
 		}
@@ -87,7 +84,7 @@ func (t *TypeDefinition) GetType() *string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetType()
+			return t.getTypeDefinition(refKey).GetType()
 		} else {
 			return nil
 		}
@@ -100,7 +97,7 @@ func (t *TypeDefinition) GetDescription() *string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetDescription()
+			return t.getTypeDefinition(refKey).GetDescription()
 		} else {
 			return nil
 		}
@@ -113,7 +110,7 @@ func (t *TypeDefinition) GetProperties() map[string]*TypeDefinition {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetProperties()
+			return t.getTypeDefinition(refKey).GetProperties()
 		} else {
 			return nil
 		}
@@ -139,20 +136,7 @@ func (t *TypeDefinition) GetAllOf() []*TypeDefinition {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetAllOf()
-		} else {
-			return nil
-		}
-	}
-}
-
-func (t *TypeDefinition) GetAnyOf() []*TypeDefinition {
-	if t.AnyOf != nil {
-		return t.AnyOf
-	} else {
-		refKey := t.RefKey()
-		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetAnyOf()
+			return t.getTypeDefinition(refKey).GetAllOf()
 		} else {
 			return nil
 		}
@@ -165,7 +149,7 @@ func (t *TypeDefinition) GetOneOf() []*TypeDefinition {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetOneOf()
+			return t.getTypeDefinition(refKey).GetOneOf()
 		} else {
 			return nil
 		}
@@ -178,7 +162,7 @@ func (t *TypeDefinition) GetExamples() []interface{} {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetExamples()
+			return t.getTypeDefinition(refKey).GetExamples()
 		} else {
 			return nil
 		}
@@ -191,7 +175,7 @@ func (t *TypeDefinition) GetReadOnly() *bool {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetReadOnly()
+			return t.getTypeDefinition(refKey).GetReadOnly()
 		} else {
 			return nil
 		}
@@ -204,7 +188,7 @@ func (t *TypeDefinition) GetItems() *TypeDefinition {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetItems()
+			return t.getTypeDefinition(refKey).GetItems()
 		} else {
 			return nil
 		}
@@ -217,7 +201,7 @@ func (t *TypeDefinition) GetAdditionalProperties() *TypeDefinition {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetAdditionalProperties()
+			return t.getTypeDefinition(refKey).GetAdditionalProperties()
 		} else {
 			return nil
 		}
@@ -230,7 +214,7 @@ func (t *TypeDefinition) GetEnum() []string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetEnum()
+			return t.getTypeDefinition(refKey).GetEnum()
 		} else {
 			return nil
 		}
@@ -243,7 +227,7 @@ func (t *TypeDefinition) GetDefault() interface{} {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetDefault()
+			return t.getTypeDefinition(refKey).GetDefault()
 		} else {
 			return nil
 		}
@@ -256,7 +240,7 @@ func (t *TypeDefinition) GetRequired() []string {
 	} else {
 		refKey := t.RefKey()
 		if refKey != nil {
-			return t.RefTypeDefinitions[*refKey].GetRequired()
+			return t.getTypeDefinition(refKey).GetRequired()
 		} else {
 			return nil
 		}
@@ -285,4 +269,24 @@ func isSimpleType(t *string) bool {
 			return true
 		}
 	}
+}
+
+func (t *TypeDefinition) getTypeDefinition(refKey *string) *TypeDefinition {
+	typeDefinition := t.RefTypeDefinitions[*refKey]
+	if typeDefinition == nil {
+		log.Panicf("Cannot find definition for type %v", *refKey)
+	}
+	return typeDefinition
+}
+
+func isArrayType(t *string) bool {
+	return t != nil && *t == "array"
+}
+
+func isPropertyRequired(requiredProperties map[string]struct{}, key string) bool {
+	required := false
+	if _, ok := requiredProperties[key]; ok {
+		required = true
+	}
+	return required
 }

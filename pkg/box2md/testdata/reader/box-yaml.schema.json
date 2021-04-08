@@ -3,7 +3,7 @@
   "$id": "https://devopsbox.io/schemas/aws/draft-01/box-yaml.schema.json",
   "title": "box.yaml",
   "description": "DevOpsBox application descriptor.",
-  "anyOf": [
+  "oneOf": [
     {
       "$ref": "#/definitions/descriptorWithEnvironments",
       "examples": [

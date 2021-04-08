@@ -4,48 +4,35 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
 func (t *TypeDefinition) ToMDString(level int) string {
 	result := ""
 
-	//result += printIndent(level) + fmt.Sprintf("ON LEVEL %v \n", level)
-
 	result += t.printDescription(level)
-	result += t.printType(level)
-	result += t.printAnyOf(level)
 	result += t.printOneOf(level)
 	result += t.printProperties(level)
-	result += t.printExamples(level)
-	result += t.printEnum(level)
-	result += t.printReadOnly(level)
+
 	result += t.printItems(level)
 	result += t.printAdditionalProperties(level)
-	result += t.printDefault(level)
+
+	result += t.printExamples(level)
 
 	return result
 }
 
 func printIndent(level int) string {
-	return strings.Repeat("  ", level)
-}
-
-func (t *TypeDefinition) printDefault(level int) string {
-	defaultValue := t.GetDefault()
-	if defaultValue != nil {
-		return printIndent(level) + fmt.Sprintf("Default value: %v\n", defaultValue)
-	} else {
-		return ""
-	}
+	return strings.Repeat(">", level)
 }
 
 func (t *TypeDefinition) printAdditionalProperties(level int) string {
 	additionalProperties := t.GetAdditionalProperties()
 	if additionalProperties != nil {
-		result := printIndent(level) + "Additional properties type: {\n"
-		result += additionalProperties.ToMDString(level + 1)
-		result += printIndent(level) + "}\n"
+		result := printIndent(level) + " Map value structure: <br/>\n"
+		result += additionalProperties.ToMDString(level)
 
 		return result
 	} else {
@@ -56,36 +43,8 @@ func (t *TypeDefinition) printAdditionalProperties(level int) string {
 func (t *TypeDefinition) printItems(level int) string {
 	items := t.GetItems()
 	if items != nil {
-		result := printIndent(level) + "Array items type: {\n"
-		result += items.ToMDString(level + 1)
-		result += printIndent(level) + "}\n"
-
-		return result
-	} else {
-		return ""
-	}
-}
-
-func (t *TypeDefinition) printReadOnly(level int) string {
-	readOnly := t.GetReadOnly()
-	if readOnly != nil && *readOnly {
-		return printIndent(level) + "Readonly!\n"
-	} else {
-		return ""
-	}
-}
-
-func (t *TypeDefinition) printEnum(level int) string {
-	enum := t.GetEnum()
-	if len(enum) > 0 {
-		result := printIndent(level) + "Enum: { "
-		for i, enumValue := range enum {
-			if i != 0 {
-				result += ", "
-			}
-			result += enumValue
-		}
-		result += " }\n"
+		result := printIndent(level) + " Array items type: <br/>\n"
+		result += items.ToMDString(level)
 
 		return result
 	} else {
@@ -96,16 +55,23 @@ func (t *TypeDefinition) printEnum(level int) string {
 func (t *TypeDefinition) printExamples(level int) string {
 	examples := t.GetExamples()
 	if len(examples) > 0 {
-		result := printIndent(level) + "Examples: {\n"
+		result := printIndent(level) + " Examples: \n"
+		result += printIndent(level) + "\n"
 		for _, example := range examples {
-			result += toYaml(example)
+			result += printIndent(level) + " ```yaml\n"
+			result += prependEveryLine(toYaml(example), printIndent(level)+" ")
+			result += "```\n"
 		}
-		result += printIndent(level) + "}\n"
 
 		return result
 	} else {
 		return ""
 	}
+}
+
+func prependEveryLine(str string, prefix string) string {
+	exp := regexp.MustCompile(`(?m)^`)
+	return exp.ReplaceAllString(str, prefix)
 }
 
 func (t *TypeDefinition) printProperties(level int) string {
@@ -113,54 +79,87 @@ func (t *TypeDefinition) printProperties(level int) string {
 
 	result := ""
 	for key, value := range t.GetAllProperties() {
-		result += printIndent(level)
-		if _, ok := requiredProperties[key]; ok {
-			result += "Required property "
-		} else {
-			result += "Property "
-		}
-		result += key + ": {\n"
+		result += printIndent(level) + " <details>\n"
+		result += printIndent(level) + " <summary>" + key + "</summary>\n"
+		result += printIndent(level) + " \n"
 
-		result += value.ToMDString(level + 1)
-		result += printIndent(level) + "}\n"
+		required := isPropertyRequired(requiredProperties, key)
+
+		propertyType := value.GetType()
+		switch {
+		case isSimpleType(propertyType):
+			result += t.printSimpleProperty(level, value, required, *value.GetType(), value.GetEnum())
+		case isArrayType(propertyType):
+			items := value.GetItems()
+			if isSimpleType(items.GetType()) {
+				typeDescription := "Array of " + *items.GetType() + " values"
+				result += t.printSimpleProperty(level, value, required, typeDescription, items.GetEnum())
+			} else {
+				result += value.ToMDString(level + 1)
+			}
+		default:
+			result += value.ToMDString(level + 1)
+		}
+		result += printIndent(level) + " </details>\n"
 	}
 	return result
+}
+
+func (t *TypeDefinition) printSimpleProperty(level int, propertyTypeDefinition *TypeDefinition, required bool, typeDescription string, enumValues []string) string {
+	result := ""
+
+	result += printIndent(level) + " **Description:** " + *propertyTypeDefinition.GetDescription() + "<br/>\n"
+
+	result += printIndent(level) + " **Type:** " + typeDescription + "<br/>\n"
+
+	if len(enumValues) > 0 {
+		result += printIndent(level) + " **Enum:** [ "
+		for i, enumValue := range enumValues {
+			if i != 0 {
+				result += ", "
+			}
+			result += enumValue
+		}
+		result += " ]<br/>\n"
+	}
+
+	readOnly := propertyTypeDefinition.GetReadOnly()
+	if readOnly != nil {
+		result += printIndent(level) + " **Read only:** " + strconv.FormatBool(*readOnly) + "<br/>\n"
+	}
+
+	result += printIndent(level) + " **Reguired:** " + strconv.FormatBool(required) + "<br/>\n"
+
+	defaultValue := propertyTypeDefinition.GetDefault()
+	if defaultValue != nil {
+		result += printIndent(level) + " **Default value:** " + defaultValueToString(defaultValue) + "<br/>\n"
+	}
+	return result
+}
+
+func defaultValueToString(defaultValue interface{}) string {
+	switch val := defaultValue.(type) {
+	case string:
+		return "\"" + val + "\""
+	default:
+		return fmt.Sprint(val)
+	}
 }
 
 func (t *TypeDefinition) printOneOf(level int) string {
 	oneOf := t.GetOneOf()
 	if len(oneOf) > 0 {
-		result := printIndent(level) + "One of: {\n"
+		result := printIndent(level) + " One of: \n"
+		result += printIndent(level) + "\n"
 		for _, one := range oneOf {
+			result += printIndent(level) + "<details open>\n"
+			result += printIndent(level) + "<summary>" + *one.GetDescription() + "</summary>\n"
+			result += printIndent(level) + "\n"
 			result += one.ToMDString(level + 1)
+			result += printIndent(level) + "</details>\n"
 		}
-		result += printIndent(level) + "}\n"
 
 		return result
-	} else {
-		return ""
-	}
-}
-
-func (t *TypeDefinition) printAnyOf(level int) string {
-	anyOf := t.GetAnyOf()
-	if len(anyOf) > 0 {
-		result := printIndent(level) + "Any: {\n"
-		for _, any := range anyOf {
-			result += any.ToMDString(level + 1)
-		}
-		result += printIndent(level) + "}\n"
-
-		return result
-	} else {
-		return ""
-	}
-}
-
-func (t *TypeDefinition) printType(level int) string {
-	getType := t.GetType()
-	if isSimpleType(getType) {
-		return printIndent(level) + "Type: " + *getType + "\n"
 	} else {
 		return ""
 	}
@@ -169,7 +168,7 @@ func (t *TypeDefinition) printType(level int) string {
 func (t *TypeDefinition) printDescription(level int) string {
 	description := t.GetDescription()
 	if description != nil {
-		return printIndent(level) + "Description: " + *description + "\n"
+		return printIndent(level) + " " + *t.GetDescription() + "<br/>\n"
 	} else {
 		return ""
 	}
