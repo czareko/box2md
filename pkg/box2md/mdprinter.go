@@ -179,5 +179,8 @@ func toYaml(obj interface{}) string {
 	if err != nil {
 		log.Panicf("Error marshaling yaml example!")
 	}
-	return string(yamlBytes)
+	yamlString := string(yamlBytes)
+	// ugly workaround for nulls in the examples output
+	result := strings.ReplaceAll(yamlString, ": null", ":")
+	return result
 }
